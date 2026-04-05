@@ -3,19 +3,19 @@ using UnityEngine.SceneManagement;
 
 public class MenuManager : MonoBehaviour
 {
-    public void StartGame() //StartGame()ŠÖ”‚ğì¬
+    public void StartGame()
     {
-        SceneManager.LoadScene("GameScene");    //Œã‚Ù‚Ç‘‚«Š·‚¦‰Â”\
+        SceneManager.LoadScene("GameScene");
     }
 
     public void OpenOptions()
-    { 
-        Debug.Log("Options button clicked");    //Œã‚Ù‚Ç‘‚«Š·‚¦‰Â”\
+    {
+        Debug.Log("Options button clicked");
     }
 
     public void QuitGame()
     {
-        Debug.Log("Quit button clicked");      //Œã‚Ù‚Ç‘‚«Š·‚¦‰Â”\
+        Debug.Log("Quit button clicked");
 
         Application.Quit();
     }
