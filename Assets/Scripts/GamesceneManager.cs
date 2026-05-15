@@ -5,7 +5,7 @@ public class GamesceneManager : MonoBehaviour
 {
     public void Buttle()
     {
-        SceneManager.LoadScene("ButtleScene1");
+        SceneManager.LoadScene("BattleScene1");
     }
 
     public void Equipment()
