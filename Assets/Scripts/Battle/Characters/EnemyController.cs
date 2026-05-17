@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class EnemyController : MonoBehaviour
@@ -13,10 +14,12 @@ public class EnemyController : MonoBehaviour
     [SerializeField] private int currentHp;
     [SerializeField] private int currentMp;
 
-    [Header("Attack Status")]
-    [SerializeField] private int normalAttackPower = 10;
-    [SerializeField] private int strongAttackPower = 20;
-    [SerializeField] private int strongAttackMpCost = 5;
+    [Header("Guard")]
+    [SerializeField] private bool isGuarding = false;
+    [SerializeField] private float guardDamageRate = 0.5f;
+
+    [Header("Enemy Actions")]
+    [SerializeField] private List<EnemyActionData> actions = new List<EnemyActionData>();
 
     public string EnemyName => enemyName;
 
@@ -25,40 +28,157 @@ public class EnemyController : MonoBehaviour
     public int CurrentHp => currentHp;
     public int CurrentMp => currentMp;
 
-    public int NormalAttackPower => normalAttackPower;
-    public int StrongAttackPower => strongAttackPower;
+    public bool IsGuarding => isGuarding;
+    public float GuardDamageRate => guardDamageRate;
 
     private void Awake()
     {
         InitializeStatus();
+        InitializeDefaultActionsIfEmpty();
     }
 
     public void InitializeStatus()
     {
         currentHp = maxHp;
         currentMp = maxMp;
+        isGuarding = false;
     }
 
-    public int NormalAttack()
+    private void InitializeDefaultActionsIfEmpty()
     {
-        Debug.Log($"{enemyName} used Normal Attack. Damage: {normalAttackPower}");
-        return normalAttackPower;
-    }
-
-    public int StrongAttack()
-    {
-        if (currentMp < strongAttackMpCost)
+        if (actions.Count > 0)
         {
-            Debug.Log($"{enemyName} does not have enough MP. Used Normal Attack instead.");
-            return NormalAttack();
+            return;
         }
 
-        currentMp -= strongAttackMpCost;
-        currentMp = Mathf.Clamp(currentMp, 0, maxMp);
+        actions.Add(new EnemyActionData
+        {
+            actionName = "Attack",
+            actionType = EnemyActionType.Attack,
+            power = 10,
+            mpCost = 0,
+            weight = 60,
+            cooldownTurn = 0
+        });
 
-        Debug.Log($"{enemyName} used Strong Attack. Damage: {strongAttackPower}, MP: {currentMp}/{maxMp}");
+        actions.Add(new EnemyActionData
+        {
+            actionName = "Strong Attack",
+            actionType = EnemyActionType.StrongAttack,
+            power = 20,
+            mpCost = 5,
+            weight = 25,
+            cooldownTurn = 0
+        });
 
-        return strongAttackPower;
+        actions.Add(new EnemyActionData
+        {
+            actionName = "Guard",
+            actionType = EnemyActionType.Guard,
+            power = 0,
+            mpCost = 0,
+            weight = 15,
+            cooldownTurn = 0
+        });
+    }
+
+    public EnemyActionData SelectAction()
+    {
+        List<EnemyActionData> usableActions = new List<EnemyActionData>();
+
+        foreach (EnemyActionData action in actions)
+        {
+            if (action == null)
+            {
+                continue;
+            }
+
+            if (currentMp < action.mpCost)
+            {
+                continue;
+            }
+
+            if (action.weight <= 0)
+            {
+                continue;
+            }
+
+            usableActions.Add(action);
+        }
+
+        if (usableActions.Count == 0)
+        {
+            return new EnemyActionData
+            {
+                actionName = "Attack",
+                actionType = EnemyActionType.Attack,
+                power = 10,
+                mpCost = 0,
+                weight = 10
+            };
+        }
+
+        return SelectActionByWeight(usableActions);
+    }
+
+    private EnemyActionData SelectActionByWeight(List<EnemyActionData> usableActions)
+    {
+        int totalWeight = 0;
+
+        foreach (EnemyActionData action in usableActions)
+        {
+            totalWeight += action.weight;
+        }
+
+        int randomValue = Random.Range(0, totalWeight);
+        int currentWeight = 0;
+
+        foreach (EnemyActionData action in usableActions)
+        {
+            currentWeight += action.weight;
+
+            if (randomValue < currentWeight)
+            {
+                return action;
+            }
+        }
+
+        return usableActions[0];
+    }
+
+    public int ExecuteAction(EnemyActionData action)
+    {
+        isGuarding = false;
+
+        if (action == null)
+        {
+            return 0;
+        }
+
+        if (action.mpCost > 0)
+        {
+            UseMp(action.mpCost);
+        }
+
+        switch (action.actionType)
+        {
+            case EnemyActionType.Attack:
+                Debug.Log($"{enemyName} used {action.actionName}. Damage: {action.power}");
+                return action.power;
+
+            case EnemyActionType.StrongAttack:
+                Debug.Log($"{enemyName} used {action.actionName}. Damage: {action.power}");
+                return action.power;
+
+            case EnemyActionType.Guard:
+                isGuarding = true;
+                Debug.Log($"{enemyName} used {action.actionName}. Guarding!");
+                return 0;
+
+            default:
+                Debug.Log($"{enemyName} used unknown action.");
+                return 0;
+        }
     }
 
     public void TakeDamage(int damage)
@@ -66,6 +186,12 @@ public class EnemyController : MonoBehaviour
         if (damage < 0)
         {
             damage = 0;
+        }
+
+        if (isGuarding)
+        {
+            damage = Mathf.RoundToInt(damage * guardDamageRate);
+            Debug.Log($"{enemyName} guarded. Damage reduced.");
         }
 
         currentHp -= damage;
