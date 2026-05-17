@@ -365,9 +365,27 @@ MonoBehaviour:
   maxMp: 20
   currentHp: 0
   currentMp: 0
-  normalAttackPower: 10
-  strongAttackPower: 20
-  strongAttackMpCost: 5
+  isGuarding: 0
+  guardDamageRate: 0.5
+  actions:
+  - actionName: Attack
+    actionType: 0
+    power: 100
+    mpCost: 0
+    weight: 70
+    cooldownTurn: 0
+  - actionName: Strong Attack
+    actionType: 1
+    power: 200
+    mpCost: 20
+    weight: 10
+    cooldownTurn: 0
+  - actionName: Guard
+    actionType: 2
+    power: 0
+    mpCost: 20
+    weight: 0
+    cooldownTurn: 0
 --- !u!1 &296928936
 GameObject:
   m_ObjectHideFlags: 0
@@ -976,7 +994,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa69ebdf06fefce4093b3c9c043ab999, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  maxHp: 100
+  maxHp: 1000
   maxMp: 50
   currentHp: 0
   currentMp: 0
@@ -1089,9 +1107,27 @@ MonoBehaviour:
   maxMp: 20
   currentHp: 0
   currentMp: 0
-  normalAttackPower: 10
-  strongAttackPower: 20
-  strongAttackMpCost: 5
+  isGuarding: 0
+  guardDamageRate: 0.5
+  actions:
+  - actionName: Attack
+    actionType: 0
+    power: 50
+    mpCost: 0
+    weight: 60
+    cooldownTurn: 0
+  - actionName: Strong Attack
+    actionType: 1
+    power: 100
+    mpCost: 20
+    weight: 20
+    cooldownTurn: 0
+  - actionName: Guard
+    actionType: 2
+    power: 0
+    mpCost: 0
+    weight: 20
+    cooldownTurn: 0
 --- !u!1 &664267729
 GameObject:
   m_ObjectHideFlags: 0
@@ -1731,9 +1767,27 @@ MonoBehaviour:
   maxMp: 20
   currentHp: 0
   currentMp: 0
-  normalAttackPower: 10
-  strongAttackPower: 20
-  strongAttackMpCost: 5
+  isGuarding: 0
+  guardDamageRate: 0.5
+  actions:
+  - actionName: Attack
+    actionType: 0
+    power: 50
+    mpCost: 0
+    weight: 80
+    cooldownTurn: 0
+  - actionName: Stromg Attack
+    actionType: 1
+    power: 250
+    mpCost: 40
+    weight: 10
+    cooldownTurn: 0
+  - actionName: Guard
+    actionType: 2
+    power: 0
+    mpCost: 0
+    weight: 10
+    cooldownTurn: 0
 --- !u!1 &904284798
 GameObject:
   m_ObjectHideFlags: 0

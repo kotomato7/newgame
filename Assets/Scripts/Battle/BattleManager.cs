@@ -172,20 +172,34 @@ public class BattleManager : MonoBehaviour
     {
         currentState = BattleState.EnemyAction;
 
-        Debug.Log("Enemy Attack!");
+        Debug.Log("Enemy Action!");
 
-        player.TakeDamage(10);
+        foreach (EnemyController enemy in enemies)
+        {
+            if (enemy == null || enemy.IsDead())
+            {
+                continue;
+            }
+
+            EnemyActionData action = enemy.SelectAction();
+            int damage = enemy.ExecuteAction(action);
+
+            if (damage > 0)
+            {
+                player.TakeDamage(damage);
+            }
+
+            if (player.IsDead())
+            {
+                currentState = BattleState.Lose;
+                Debug.Log("Player Lose");
+                return;
+            }
+        }
 
         if (battleUIManager != null)
         {
             battleUIManager.UpdateAllStatus(player, enemies);
-        }
-
-        if (player.IsDead())
-        {
-            currentState = BattleState.Lose;
-            Debug.Log("Player Lose");
-            return;
         }
 
         turnCount++;
