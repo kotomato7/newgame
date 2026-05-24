@@ -1,4 +1,9 @@
-using UnityEngine;
+public enum PlayerCommand
+{
+    None,
+    Attack,
+    Special,
+}
 
 public enum BattleState
 {
