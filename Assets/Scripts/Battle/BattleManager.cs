@@ -13,6 +13,7 @@ public class BattleManager : MonoBehaviour
 
     [Header("Target")]
     [SerializeField] private int selectedEnemyIndex = -1;
+    private PlayerCommand selectedCommand = PlayerCommand.None;
 
     [Header("UI")]
     [SerializeField] private BattleUIManager battleUIManager;
@@ -45,46 +46,53 @@ public class BattleManager : MonoBehaviour
     private void StartPlayerTurn()
     {
         currentState = BattleState.PlayerTurn;
+        selectedEnemyIndex = -1;   //ï¿½^ï¿½[ï¿½Qï¿½bï¿½gï¿½ï¿½ï¿½ï¿½ï¿½Zï¿½bï¿½g
 
         Debug.Log("Player Turn");
+
+        // ï¿½Rï¿½}ï¿½ï¿½ï¿½hï¿½Eï¿½Bï¿½ï¿½ï¿½hï¿½Eï¿½ï¿½\ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        if (battleUIManager != null)
+            battleUIManager.ShowCommandWindow();
     }
 
-    public void OnPlayerAttackButton()
+    // ã‚³ãƒãƒ³ãƒ‰ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ï¼šæ”»æ’ƒãƒœã‚¿ãƒ³
+    public void OnCommandAttack()
     {
-        if (currentState != BattleState.PlayerTurn)
-        {
-            return;
-        }
+        if (currentState != BattleState.PlayerTurn) return;
 
-        if (selectedEnemyIndex == -1)
-        {
-            Debug.Log("No enemy selected.");
-            return;
-        }
+        selectedCommand = PlayerCommand.Attack;
+        Debug.Log("Command: Attack selected");
 
-        if (enemies[selectedEnemyIndex] == null)
-        {
-            Debug.Log("Selected enemy is null.");
-            return;
-        }
-
-        if (enemies[selectedEnemyIndex].IsDead())
-        {
-            Debug.Log("Selected enemy is already dead.");
-            return;
-        }
-
-        Debug.Log($"Player selected Attack to {enemies[selectedEnemyIndex].EnemyName}");
-
-        StartPlayerCommandInput();
+        if (battleUIManager != null)
+            battleUIManager.ShowTargetWindow(enemies);
     }
 
+    // ã‚³ãƒãƒ³ãƒ‰ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ï¼šå¿…æ®ºæŠ€ãƒœã‚¿ãƒ³
+    public void OnCommandSpecial()
+    {
+        if (currentState != BattleState.PlayerTurn) return;
+
+        selectedCommand = PlayerCommand.Special;
+        Debug.Log("Command: Special selected");
+
+        if (battleUIManager != null)
+            battleUIManager.ShowTargetWindow(enemies);
+    }
+
+    // ã‚¿ãƒ¼ã‚²ãƒƒãƒˆã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ï¼šæˆ»ã‚‹ãƒœã‚¿ãƒ³
+    public void OnTargetBack()
+    {
+        if (currentState != BattleState.PlayerTurn) return;
+
+        selectedCommand = PlayerCommand.None;
+        if (battleUIManager != null)
+            battleUIManager.ShowCommandWindow();
+    }
+
+    // ã‚¿ãƒ¼ã‚²ãƒƒãƒˆã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ï¼šæ•µã‚’é¸æŠ
     public void SelectEnemyTarget(int enemyIndex)
     {
-        if (currentState != BattleState.PlayerTurn)
-        {
-            return;
-        }
+        if (currentState != BattleState.PlayerTurn) return;
 
         if (enemyIndex < 0 || enemyIndex >= enemies.Length)
         {
@@ -92,21 +100,16 @@ public class BattleManager : MonoBehaviour
             return;
         }
 
-        if (enemies[enemyIndex] == null)
+        if (enemies[enemyIndex] == null || enemies[enemyIndex].IsDead())
         {
-            Debug.Log("Enemy is null.");
-            return;
-        }
-
-        if (enemies[enemyIndex].IsDead())
-        {
-            Debug.Log($"{enemies[enemyIndex].EnemyName} is already dead.");
+            Debug.Log($"Enemy {enemyIndex} is not a valid target.");
             return;
         }
 
         selectedEnemyIndex = enemyIndex;
+        Debug.Log($"Target selected: {enemies[enemyIndex].EnemyName}");
 
-        Debug.Log($"Selected target: {enemies[enemyIndex].EnemyName}");
+        StartPlayerCommandInput();
     }
 
     private void StartPlayerCommandInput()
@@ -115,7 +118,7 @@ public class BattleManager : MonoBehaviour
 
         Debug.Log("Player Command Input Start");
 
-        // ¡‚Í‰¼‚ÅA‚·‚®UŒ‚¬Œ÷ˆµ‚¢‚É‚·‚é
+        // ï¿½ï¿½ï¿½Í‰ï¿½ï¿½ÅAï¿½ï¿½ï¿½ï¿½ï¿½Uï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É‚ï¿½ï¿½ï¿½
         ExecutePlayerAction();
     }
 
@@ -123,14 +126,24 @@ public class BattleManager : MonoBehaviour
     {
         currentState = BattleState.PlayerAction;
 
-        Debug.Log("Player Attack!");
-
         EnemyController targetEnemy = enemies[selectedEnemyIndex];
 
         if (targetEnemy != null && !targetEnemy.IsDead())
         {
-            targetEnemy.TakeDamage(10);
+            switch (selectedCommand)
+            {
+                case PlayerCommand.Attack:
+                    Debug.Log($"Player Attack â†’ {targetEnemy.EnemyName}");
+                    targetEnemy.TakeDamage(10);
+                    break;
+                case PlayerCommand.Special:
+                    Debug.Log($"Player Special â†’ {targetEnemy.EnemyName}");
+                    targetEnemy.TakeDamage(25);
+                    break;
+            }
         }
+
+        selectedCommand = PlayerCommand.None;
 
         if (battleUIManager != null)
         {
@@ -164,7 +177,7 @@ public class BattleManager : MonoBehaviour
 
         Debug.Log("Enemy Command Input Start");
 
-        // ¡‚Í‰¼‚ÅA‚·‚®“Gs“®‚Éi‚Ş
+        // ï¿½ï¿½ï¿½Í‰ï¿½ï¿½ÅAï¿½ï¿½ï¿½ï¿½ï¿½Gï¿½sï¿½ï¿½ï¿½Éiï¿½ï¿½
         ExecuteEnemyAction();
     }
 
