@@ -34,12 +34,12 @@ public class BattleUIManager : MonoBehaviour
         if (commandWindow != null) commandWindow.SetActive(false);
         if (targetWindow != null) targetWindow.SetActive(true);
 
-        // �������Ă���G�����{�^����L����
+        // 生きている敵のボタンを有効化
         for (int i = 0; i < targetButtons.Length; i++)
         {
             if (targetButtons[i] == null) continue;
 
-            bool isAlive = enemies[i] != null && !enemies[i].IsDead();
+            bool isAlive = i < enemies.Length && enemies[i] != null && !enemies[i].IsDead();
             targetButtons[i].interactable = isAlive;
 
             if (targetButtonTexts[i] != null)

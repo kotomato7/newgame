@@ -13,6 +13,7 @@ public enum BattleState
 
     PlayerTurn,
     PlayerCommandInput,
+    QTEInput,
     PlayerAction,
 
     EnemyTurn,

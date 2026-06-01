@@ -1,7 +1,11 @@
+using System.Collections;
 using UnityEngine;
 
 public class BattleManager : MonoBehaviour
 {
+    private static readonly WaitForSeconds WaitHalf = new(0.5f);
+    private static readonly WaitForSeconds WaitThird = new(0.3f);
+
     [Header("Battle State")]
     [SerializeField] private BattleState currentState = BattleState.None;
 
@@ -18,6 +22,18 @@ public class BattleManager : MonoBehaviour
     [Header("UI")]
     [SerializeField] private BattleUIManager battleUIManager;
 
+    [Header("QTE")]
+    [SerializeField] private QTEManager qteManager;
+
+    [Header("Projectile")]
+    [SerializeField] private GameObject projectilePrefab;   // 丸いオブジェクトのプレハブ
+    [SerializeField] private float projectileDuration = 0.4f;
+
+    [Header("Attack Settings")]
+    [SerializeField] private int attackDamage = 10;
+    [SerializeField] private int specialDamage = 25;
+    [SerializeField] private float qteSuccessMultiplier = 1.5f;
+
     [Header("Turn Count")]
     [SerializeField] private int turnCount = 0;
 
@@ -33,12 +49,9 @@ public class BattleManager : MonoBehaviour
 
         Debug.Log("Battle Start");
         Debug.Log($"Player HP: {player.CurrentHp}/{player.MaxHp}");
-        Debug.Log($"Player MP: {player.CurrentMp}/{player.MaxMp}");
 
         if (battleUIManager != null)
-        {
             battleUIManager.UpdateAllStatus(player, enemies);
-        }
 
         StartPlayerTurn();
     }
@@ -46,11 +59,10 @@ public class BattleManager : MonoBehaviour
     private void StartPlayerTurn()
     {
         currentState = BattleState.PlayerTurn;
-        selectedEnemyIndex = -1;   //�^�[�Q�b�g�����Z�b�g
+        selectedEnemyIndex = -1;
 
-        Debug.Log("Player Turn");
+        Debug.Log($"Turn {turnCount}: Player Turn");
 
-        // �R�}���h�E�B���h�E��\������
         if (battleUIManager != null)
             battleUIManager.ShowCommandWindow();
     }
@@ -94,129 +106,118 @@ public class BattleManager : MonoBehaviour
     {
         if (currentState != BattleState.PlayerTurn) return;
 
-        if (enemyIndex < 0 || enemyIndex >= enemies.Length)
-        {
-            Debug.Log("Invalid enemy index.");
-            return;
-        }
-
-        if (enemies[enemyIndex] == null || enemies[enemyIndex].IsDead())
-        {
-            Debug.Log($"Enemy {enemyIndex} is not a valid target.");
-            return;
-        }
+        if (enemyIndex < 0 || enemyIndex >= enemies.Length) return;
+        if (enemies[enemyIndex] == null || enemies[enemyIndex].IsDead()) return;
 
         selectedEnemyIndex = enemyIndex;
         Debug.Log($"Target selected: {enemies[enemyIndex].EnemyName}");
 
-        StartPlayerCommandInput();
+        if (battleUIManager != null)
+            battleUIManager.HideAllWindows();
+
+        StartCoroutine(BattleTurnCoroutine());
     }
 
-    private void StartPlayerCommandInput()
+    // ターン全体の流れ（プレイヤー攻撃 → 敵攻撃）
+    private IEnumerator BattleTurnCoroutine()
     {
-        currentState = BattleState.PlayerCommandInput;
+        // === Phase 1: QTE ===
+        currentState = BattleState.QTEInput;
+        bool qteSuccess = false;
 
-        Debug.Log("Player Command Input Start");
+        if (qteManager != null)
+            yield return StartCoroutine(qteManager.RunQTE(result => qteSuccess = result));
 
-        // ���͉��ŁA�����U�����������ɂ���
-        ExecutePlayerAction();
-    }
-
-    private void ExecutePlayerAction()
-    {
+        // === Phase 2: プレイヤー攻撃 ===
         currentState = BattleState.PlayerAction;
+        EnemyController target = enemies[selectedEnemyIndex];
 
-        EnemyController targetEnemy = enemies[selectedEnemyIndex];
+        int baseDamage = selectedCommand == PlayerCommand.Special ? specialDamage : attackDamage;
+        int finalDamage = qteSuccess
+            ? Mathf.RoundToInt(baseDamage * qteSuccessMultiplier)
+            : baseDamage;
 
-        if (targetEnemy != null && !targetEnemy.IsDead())
-        {
-            switch (selectedCommand)
-            {
-                case PlayerCommand.Attack:
-                    Debug.Log($"Player Attack → {targetEnemy.EnemyName}");
-                    targetEnemy.TakeDamage(10);
-                    break;
-                case PlayerCommand.Special:
-                    Debug.Log($"Player Special → {targetEnemy.EnemyName}");
-                    targetEnemy.TakeDamage(25);
-                    break;
-            }
-        }
+        Debug.Log($"Player → {target.EnemyName} : {finalDamage} damage (QTE: {(qteSuccess ? "SUCCESS" : "MISS")})");
 
-        selectedCommand = PlayerCommand.None;
+        // 弾をプレイヤー → 敵へ飛ばす
+        yield return StartCoroutine(LaunchProjectile(player.transform.position, target.transform.position));
+
+        target.TakeDamage(finalDamage);
 
         if (battleUIManager != null)
-        {
             battleUIManager.UpdateAllStatus(player, enemies);
-        }
 
+        yield return WaitHalf;
+
+        selectedCommand = PlayerCommand.None;
+        selectedEnemyIndex = -1;
+
+        // === Phase 3: 勝利判定 ===
         if (AreAllEnemiesDead())
         {
             currentState = BattleState.Win;
-            Debug.Log("Player Win");
-            return;
+            Debug.Log("Player Win!");
+            yield break;
         }
 
-        selectedEnemyIndex = -1;
-
-        StartEnemyTurn();
-    }
-
-    private void StartEnemyTurn()
-    {
+        // === Phase 4: 敵ターン ===
         currentState = BattleState.EnemyTurn;
+        yield return StartCoroutine(EnemyTurnCoroutine());
 
-        Debug.Log("Enemy Turn");
+        if (currentState == BattleState.Lose)
+            yield break;
 
-        StartEnemyCommandInput();
+        // === Phase 5: 次のプレイヤーターン ===
+        turnCount++;
+        StartPlayerTurn();
     }
 
-    private void StartEnemyCommandInput()
+    // 敵全員が順番に行動する
+    private IEnumerator EnemyTurnCoroutine()
     {
-        currentState = BattleState.EnemyCommandInput;
-
-        Debug.Log("Enemy Command Input Start");
-
-        // ���͉��ŁA�����G�s���ɐi��
-        ExecuteEnemyAction();
-    }
-
-    private void ExecuteEnemyAction()
-    {
-        currentState = BattleState.EnemyAction;
-
-        Debug.Log("Enemy Action!");
-
         foreach (EnemyController enemy in enemies)
         {
-            if (enemy == null || enemy.IsDead())
-            {
-                continue;
-            }
+            if (enemy == null || enemy.IsDead()) continue;
 
             EnemyActionData action = enemy.SelectAction();
             int damage = enemy.ExecuteAction(action);
 
             if (damage > 0)
             {
+                // 弾を敵 → プレイヤーへ飛ばす
+                yield return StartCoroutine(LaunchProjectile(enemy.transform.position, player.transform.position));
+
                 player.TakeDamage(damage);
-            }
 
-            if (player.IsDead())
+                if (battleUIManager != null)
+                    battleUIManager.UpdateAllStatus(player, enemies);
+
+                yield return WaitThird;
+
+                if (player.IsDead())
+                {
+                    currentState = BattleState.Lose;
+                    Debug.Log("Player Lose!");
+                    yield break;
+                }
+            }
+            else
             {
-                currentState = BattleState.Lose;
-                Debug.Log("Player Lose");
-                return;
+                // ガードなどダメージなし行動
+                yield return WaitHalf;
+
+                if (battleUIManager != null)
+                    battleUIManager.UpdateAllStatus(player, enemies);
             }
         }
+    }
 
-        if (battleUIManager != null)
-        {
-            battleUIManager.UpdateAllStatus(player, enemies);
-        }
-
-        turnCount++;
-        StartPlayerTurn();
+    // 弾を発射して到達を待つ
+    private IEnumerator LaunchProjectile(Vector3 from, Vector3 to)
+    {
+        bool arrived = false;
+        AttackProjectile.Spawn(projectilePrefab, from, to, projectileDuration, () => arrived = true);
+        yield return new WaitUntil(() => arrived);
     }
 
     private bool AreAllEnemiesDead()
@@ -224,11 +225,8 @@ public class BattleManager : MonoBehaviour
         foreach (EnemyController enemy in enemies)
         {
             if (enemy != null && !enemy.IsDead())
-            {
                 return false;
-            }
         }
-
         return true;
     }
 }
