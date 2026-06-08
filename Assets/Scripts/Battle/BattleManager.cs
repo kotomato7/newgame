@@ -33,6 +33,7 @@ public class BattleManager : MonoBehaviour
     [SerializeField] private int attackDamage = 10;
     [SerializeField] private int specialDamage = 25;
     [SerializeField] private float qteSuccessMultiplier = 1.5f;
+    [SerializeField] private float qteBothSuccessMultiplier = 2.0f;
 
     [Header("Turn Count")]
     [SerializeField] private int turnCount = 0;
@@ -123,21 +124,24 @@ public class BattleManager : MonoBehaviour
     {
         // === Phase 1: QTE ===
         currentState = BattleState.QTEInput;
-        bool qteSuccess = false;
+        QTEResult qteResult = QTEResult.Miss;
 
         if (qteManager != null)
-            yield return StartCoroutine(qteManager.RunQTE(result => qteSuccess = result));
+            yield return StartCoroutine(qteManager.RunQTE(result => qteResult = result));
 
         // === Phase 2: プレイヤー攻撃 ===
         currentState = BattleState.PlayerAction;
         EnemyController target = enemies[selectedEnemyIndex];
 
         int baseDamage = selectedCommand == PlayerCommand.Special ? specialDamage : attackDamage;
-        int finalDamage = qteSuccess
-            ? Mathf.RoundToInt(baseDamage * qteSuccessMultiplier)
-            : baseDamage;
+        int finalDamage = qteResult switch
+        {
+            QTEResult.BothSuccess => Mathf.RoundToInt(baseDamage * qteBothSuccessMultiplier),
+            QTEResult.KeySuccess  => Mathf.RoundToInt(baseDamage * qteSuccessMultiplier),
+            _                     => baseDamage
+        };
 
-        Debug.Log($"Player → {target.EnemyName} : {finalDamage} damage (QTE: {(qteSuccess ? "SUCCESS" : "MISS")})");
+        Debug.Log($"Player → {target.EnemyName} : {finalDamage} damage (QTE: {qteResult})");
 
         // 弾をプレイヤー → 敵へ飛ばす
         yield return StartCoroutine(LaunchProjectile(player.transform.position, target.transform.position));
