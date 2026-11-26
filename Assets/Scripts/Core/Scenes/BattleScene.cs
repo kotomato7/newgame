@@ -5,34 +5,43 @@
 //   "fight"   … たたかう の中身(こうげき / じゅふ / やめる)を選ぶ
 //   "target"  … こうげきする敵を選ぶ(←→ かマウス)
 //   "jufu"    … 使う呪符を選ぶ
-//   "action"  … 戦闘中(この間は QTE の入力だけ受けつける)
+//   "action"  … 戦闘中・呪符を使っている途中(この間は QTE の入力だけ受けつける)
 //   "result"  … 勝ち / 負け の表示
 //
 // ターン(1回の戦闘):
-//   プレイヤーがコマンドを決めたら始まる。順番はいつも同じ
-//     1. 防御QTEターン … 敵のこうげき。リズムゲーム(UI/Rhythm.cs)
-//     2. 攻撃QTEターン … プレイヤーの行動(こうげき / じゅふ)。プレイヤーはいつも最後
-//   ひっさつを選んだときは 防御QTE はなく、ひっさつ(星をえがく)だけ
+//   プレイヤーが こうげき か ひっさつ を決めたら始まる
+//     こうげき … 1. 防御QTEターン(敵のこうげき。リズムゲーム UI/Rhythm.cs) → 2. 攻撃QTEターン(プレイヤーのこうげき)
+//     ひっさつ … 1. 星をえがく(敵全体にダメージ) → 2. 防御QTEターン(敵のこうげき)。攻撃QTE・ふつうのこうげきはなし
+//   じゅふ はターンを使わない。呪符の効果(回復)が出たら、コマンド選択(たたかう / ひっさつ / にげる)にもどる
 //   HPの丸の赤い部分(前のターンに減った分)は、次のターンが始まったときに欠ける
 //
 // 防御QTE(UI/Rhythm.cs):
 //   敵の真下の列を、キー(Q W E / A S D / Z X C)が拍に合わせて落ちてくる。判定ラインで押すとガード
+//   速さ(テンポ)は data/battle_rules.csv の「防御QTEのテンポ(BPM)」
 //   左の列 Q A Z = 左の敵、W S X = 真ん中の敵、E D C = 右の敵
-//   生きている敵1体につき5個。キーはその敵の3つからランダム、どの敵から来るかの順番もランダム
+//   マウスの矢印も流れてくる(左の列 ←、真ん中の列 ↑ ↓、右の列 →)。判定ラインでマウスをその向きにすばやく動かすとガード
+//   生きている敵1体につき5個。キーはその敵の3つのキーとマウスの矢印からランダム、どの敵から来るかの順番もランダム
 //   QTEの間はダメージを受けない。全部終わってから、敵が 左→真ん中→右 の順に少しずつずらしてこうげきし、1体ずつダメージを受ける
 //   受けるダメージ(敵1体ごと) = 攻撃力 − ダメージカット率K × (ガードできた数 ÷ その敵のキーの数)
 //   (全部ガード = 攻撃力 − K、全部ミス = 攻撃力そのまま。K は data/characters.csv で敵ごとに決める)
 //
 // 攻撃QTE(UI/Qte.cs):
 //   A → S → D → F の順に、時間内に押せたら成功。与えるダメージが倍率ぶん増え、QTEポイントが1増える
-//   (倍率は data/battle_rules.csv で変えられる)
+//   (倍率と受付時間は data/battle_rules.csv で変えられる)
 //
 // じゅふ(呪符):
-//   呪符(data/talismans.csv。3枚まで)を1枚えらんで使う。攻撃力が、そのバトルのあいだ上がる
+//   呪符(data/talismans.csv。3枚まで)を1枚えらんで使う。欄には上から talismans.csv の行の順に、
+//   その行の ID のアイテム(data/items.csv)の「表示名」が並ぶ
+//   使うと HP が「回復量」だけ回復し(最大HPより上にはならない)、QTEポイントが「減るQTEポイント」だけ減る(0 より下にはならない)
+//   ターンは使わないので、使ったあとはコマンド選択にもどる(そのあと こうげき などを選ぶ)
 //   1枚ずつ、1回のバトルで1回だけ使える(使った呪符はグレーになる)
 //
 // ひっさつ(攻撃QTEに5回成功して、QTEポイントが5つたまると選べる):
 //   マウスで星をえがく(UI/StarDrawing.cs)。えがけたら敵全体にダメージ(量は data/battle_rules.csv)
+//   そのあと防御QTE(生き残った敵だけがこうげきしてくる)
+//
+// タイム:
+//   バトル画面に入ったときから数えはじめ、右上に「00:00:00」(分:秒:1/100秒)で出す。決着したら止まり、結果の画面にも出す
 //
 // キャラのしくみは Characters.cs、パラメータの数値は data/characters.csv にある
 //
@@ -75,7 +84,8 @@ namespace QteRpg.Scenes
 
         const int SPECIAL_INDEX = 1;  // コマンド欄での「ひっさつ」の番号(0=たたかう, 1=ひっさつ, 2=にげる)
         const int JUFU_INDEX = 1;     // たたかう の中での「じゅふ」の番号(0=こうげき, 1=じゅふ, 2=やめる)
-        const double NOTICE_TIME = 0.9;  // 「攻撃力 +5」などの表示時間
+        const double NOTICE_TIME = 0.9;  // 「HP +20」などの表示時間
+        const int TIME_MARGIN = 6;       // 右上のタイムの、画面の右はし・上はしからのすき間
 
         const int EMBLEM_RADIUS = 34;  // 右下の紋章(HPの丸・QTEポイント)の大きさ
         static readonly (int x, int y) EMBLEM_CENTER = (W - EMBLEM_RADIUS - 10, H - EMBLEM_RADIUS - 10);
@@ -130,8 +140,9 @@ namespace QteRpg.Scenes
         SelectList _talismanMenu;     // 呪符をえらぶ欄(バトル開始時に表から作る)
         PgRect _talismanRect;
         HashSet<int> _usedTalismans = new HashSet<int>();  // このバトルで使った呪符の番号
-        string _notice = "";          // 真ん中に少し出す文字(「攻撃力 +5」など)
+        string _notice = "";          // 真ん中に少し出す文字(「HP +20」など)
         double _noticeTimer;
+        double _battleTime;           // バトル画面に入ってからの時間(秒。小数で 1/100秒 より細かく持つ)。決着したら止まる
         bool _subResult;              // QTE・星えがきの結果(Python 版の「yield from の戻り値」のかわり)
         readonly Surface _shade = new Surface(W, H);  // 画面を暗くする黒い板
 
@@ -190,6 +201,7 @@ namespace QteRpg.Scenes
             _star = null;
             _qteFlashTimer = 0.0;
             _noticeTimer = 0.0;
+            _battleTime = 0.0;  // タイムはバトル画面に入ったときから数える
             // 呪符: バトルのたびに全部使える状態にもどし、上がったパラメータももとにもどす
             _player.ClearBuffs();
             _usedTalismans = new HashSet<int>();
@@ -198,12 +210,16 @@ namespace QteRpg.Scenes
             RefreshCommands();
         }
 
-        /// <summary>呪符をえらぶ欄を作る。表示は「攻撃力+5」のように、上がるパラメータと量</summary>
+        /// <summary>呪符をえらぶ欄を作る。上から talismans.csv の行の順に、アイテムの表示名(「回復のじゅふ」など)を出す</summary>
         void BuildTalismanMenu()
         {
-            var labels = GameData.TALISMANS.Select(t => $"{t.StatName}+{t.Amount}").Concat(new[] { "やめる" }).ToList();
-            int height = 8 + MENU_GAP * labels.Count;
-            _talismanRect = new PgRect(FIGHT_RECT.Left, FIGHT_RECT.Top - 4 - height, 104, height);  // たたかう欄の上
+            var labels = GameData.TALISMANS.Select(t => t.DisplayName).Concat(new[] { "やめる" }).ToList();
+            // 高さは、呪符3枚 + やめる でも 敵の名前の札にかからないように、少しつめる
+            int height = 4 + MENU_GAP * labels.Count;
+            // 幅は一番長い名前に合わせる(左にカーソルの分 16、右に少しすき間)。最低でも 104
+            int textWidth = labels.Max(label => Utils.RenderText(label, Settings.FONT_SMALL).Width);
+            int width = Math.Max(104, 16 + textWidth + 8);
+            _talismanRect = new PgRect(FIGHT_RECT.Left, FIGHT_RECT.Top - 2 - height, width, height);  // たたかう欄のすぐ上
             _talismanMenu = new SelectList(labels, top: _talismanRect.Top + 1, left: _talismanRect.Left + 16, gap: MENU_GAP);
         }
 
@@ -385,7 +401,7 @@ namespace QteRpg.Scenes
             }
             else  // グレー(使用ずみ)の呪符は SelectList が反応しないようにしている
             {
-                StartRound("jufu", talisman: choice.Value);
+                UseTalisman(choice.Value);
             }
         }
 
@@ -430,26 +446,78 @@ namespace QteRpg.Scenes
             }
         }
 
+        // ---- じゅふ(ターンを使わない) ----
+        /// <summary>
+        /// 呪符を使う。効果(回復など)が出たら コマンド選択(たたかう / ひっさつ / にげる)にもどる
+        /// ターンは進まず、敵もこうげきしてこない
+        /// </summary>
+        void UseTalisman(int talisman)
+        {
+            _state = "action";  // 呪符を使う動きのあいだは、入力を受けつけない
+            _round = RunTalisman(talisman);
+            _wait = 0.0;
+        }
+
+        IEnumerator<double?> RunTalisman(int talisman)
+        {
+            foreach (var step in TalismanAction(talisman)) yield return step;
+            _commandMenu.Reset();  // カーソルは「たたかう」に
+            _state = "command";
+        }
+
+        /// <summary>呪符を1枚使う。HPが回復して、QTEポイントが減る(右下の星の光が消える)</summary>
+        IEnumerable<double?> TalismanAction(int talisman)
+        {
+            var actor = _playerActor;
+            var card = talisman < GameData.TALISMANS.Count ? GameData.TALISMANS[talisman] : null;
+            _usedTalismans.Add(talisman);
+            if (card != null)
+            {
+                int before = _player.Hp;
+                _player.Heal(card.Heal);  // 最大HPより上にはならない
+                _player.LoseQtePoints(card.QteCost);
+                if (card.Heal > 0)
+                {
+                    _notice = $"HP +{_player.Hp - before}";  // 実際に回復した量
+                    _noticeTimer = NOTICE_TIME;
+                }
+            }
+            actor.Flash(Settings.GLOW);
+            actor.Play("じゅふ");
+            yield return Math.Max(AFTER_HIT, actor.MotionTime("じゅふ"));
+        }
+
         // ---- 戦闘(1ターン) ----
         /// <summary>
-        /// プレイヤーのコマンドが決まったら呼ぶ。ここからターンが始まる
-        /// target は こうげきする敵、talisman は 使う呪符の番号
+        /// プレイヤーのコマンド(こうげき / ひっさつ)が決まったら呼ぶ。ここからターンが始まる
+        /// target は こうげきする敵
         /// </summary>
-        void StartRound(string action, Enemy target = null, int talisman = 0)
+        void StartRound(string action, Enemy target = null)
         {
             _emblem.StartTurn(_player);  // 前のターンに減ったHP(赤い部分)がここで欠ける
             _state = "action";
-            _round = RunRound(action, target, talisman);
+            _round = RunRound(action, target);
             _wait = 0.0;
         }
 
         /// <summary>
         /// 1ターン分の戦闘。yield return で「何秒待つか」を返しながら1ステップずつ進む
-        /// 順番: 防御QTE(敵のこうげき) → プレイヤーの行動。ひっさつのときは防御QTEなし
+        /// 順番: こうげき … 防御QTE(敵のこうげき) → 攻撃QTE → プレイヤーのこうげき
+        ///       ひっさつ … 星をえがく(敵全体にダメージ) → 防御QTE(敵のこうげき)。攻撃QTE・ふつうのこうげきはなし
         /// </summary>
-        IEnumerator<double?> RunRound(string action, Enemy target, int talisman)
+        IEnumerator<double?> RunRound(string action, Enemy target)
         {
-            if (action != "special")
+            if (action == "special")
+            {
+                foreach (var step in PlayerAction(action, target)) yield return step;
+                if (CheckFinish())  // ひっさつで全員倒したら、防御QTEはなし
+                {
+                    yield break;
+                }
+                yield return BETWEEN_ACTIONS;
+                foreach (var step in DefensePhase()) yield return step;
+            }
+            else
             {
                 foreach (var step in DefensePhase()) yield return step;
                 if (CheckFinish())
@@ -457,8 +525,8 @@ namespace QteRpg.Scenes
                     yield break;
                 }
                 yield return BETWEEN_ACTIONS;
+                foreach (var step in PlayerAction(action, target)) yield return step;
             }
-            foreach (var step in PlayerAction(action, target, talisman)) yield return step;
             if (CheckFinish())
             {
                 yield break;
@@ -541,7 +609,8 @@ namespace QteRpg.Scenes
             yield return Math.Max(AFTER_HIT, _playerActor.MotionTime("ダメージ"));
         }
 
-        IEnumerable<double?> PlayerAction(string action, Enemy target, int talisman)
+        /// <summary>プレイヤーの行動: "attack"(攻撃QTE → こうげき)か "special"(ひっさつ)</summary>
+        IEnumerable<double?> PlayerAction(string action, Enemy target)
         {
             var actor = _playerActor;
             if (action == "attack")
@@ -582,21 +651,6 @@ namespace QteRpg.Scenes
                     }
                     foreach (var step in HitMotion(hitActors)) yield return step;
                 }
-            }
-            else if (action == "jufu")
-            {
-                // じゅふ: 呪符を1枚使って、パラメータを上げる(このバトルのあいだ)
-                var card = talisman < GameData.TALISMANS.Count ? GameData.TALISMANS[talisman] : null;
-                _usedTalismans.Add(talisman);
-                if (card != null)
-                {
-                    _player.RaiseStat(card.Stat, card.Amount);
-                    _notice = $"{card.StatName} +{card.Amount}";
-                    _noticeTimer = NOTICE_TIME;
-                }
-                actor.Flash(Settings.GLOW);
-                actor.Play("じゅふ");
-                yield return Math.Max(AFTER_HIT, actor.MotionTime("じゅふ"));
             }
         }
 
@@ -733,6 +787,10 @@ namespace QteRpg.Scenes
             {
                 _resultTimer += dt;
             }
+            else
+            {
+                _battleTime += dt;  // 決着する(result になる)までタイムを進める。dt は前のフレームからの秒数(小数)なので 1/100秒 まで数えられる
+            }
 
             for (int i = 0; i < _enemyActors.Count; i++)
             {
@@ -780,6 +838,7 @@ namespace QteRpg.Scenes
                 actor.DrawDamagePopups(surface);  // ダメージの数字はキャラより上に描く
             }
             _emblem.Draw(surface, _player);
+            DrawTime(surface);
 
             Window.DrawWindow(surface, COMMAND_RECT);
             _commandMenu.Draw(surface, active: _state == "command");
@@ -812,7 +871,7 @@ namespace QteRpg.Scenes
             {
                 QteView.DrawQteResult(surface, _qteFlash, QTE_CENTER);
             }
-            else if (_noticeTimer > 0)
+            else if (_noticeTimer > 0 && _state != "jufu")  // 呪符の欄を開いているときは、欄に重なるので出さない
             {
                 Utils.DrawText(surface, _notice, Settings.FONT_LARGE, Settings.GLOW, Anchor.Center, QTE_CENTER);
             }
@@ -821,6 +880,25 @@ namespace QteRpg.Scenes
             {
                 DrawResult(surface);
             }
+        }
+
+        /// <summary>秒を「00:00:00」(分:秒:1/100秒)の文字にする。1/100秒 より細かいところは切り捨て</summary>
+        static string FormatTime(double seconds)
+        {
+            // 1/100秒 の数にする(1e-6 は、足し算の誤差で 0.99999… が 0.99 にならないように)
+            long centis = (long)Math.Floor(Math.Max(0.0, seconds) * 100 + 1e-6);
+            long minutes = centis / 6000, secs = centis / 100 % 60, hundredths = centis % 100;
+            return $"{minutes:00}:{secs:00}:{hundredths:00}";
+        }
+
+        /// <summary>右上にタイムを出す(敵の名前の札と同じ、白わくの黒い札)</summary>
+        void DrawTime(Surface surface)
+        {
+            var text = Utils.RenderText(FormatTime(_battleTime), Settings.FONT_SMALL, Settings.WHITE);
+            int boxW = text.Width + 8, boxH = text.Height + 2;
+            var box = new PgRect(W - TIME_MARGIN - boxW, TIME_MARGIN, boxW, boxH);  // 右上にそろえる
+            Window.DrawWindow(surface, box);
+            surface.Blit(text, text.GetRect(Anchor.Center, box.CenterX, box.CenterY));
         }
 
         void DrawResult(Surface surface)
@@ -839,7 +917,8 @@ namespace QteRpg.Scenes
             string text = _result == "win" ? "しょうり！" : "まけてしまった…";
             var color = _result == "win" ? Settings.GLOW : Settings.WHITE;
             Utils.DrawText(surface, text, Settings.FONT_LARGE, color, Anchor.Center, W / 2, H / 2 - 16);
-            Utils.DrawText(surface, "Enter / クリックでタイトルへ", Settings.FONT_SMALL, Settings.LIGHT_GRAY, Anchor.Center, W / 2, H / 2 + 20);
+            Utils.DrawText(surface, $"タイム  {FormatTime(_battleTime)}", Settings.FONT_SMALL, Settings.WHITE, Anchor.Center, W / 2, H / 2 + 18);
+            Utils.DrawText(surface, "Enter / クリックでタイトルへ", Settings.FONT_SMALL, Settings.LIGHT_GRAY, Anchor.Center, W / 2, H / 2 + 44);
         }
     }
 }

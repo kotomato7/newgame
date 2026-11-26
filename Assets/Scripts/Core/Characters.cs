@@ -155,6 +155,9 @@ namespace QteRpg
 
         /// <summary>ひっさつを使ったときに呼ぶ。QTEポイントを0にもどす</summary>
         public void UseQtePoints() => QtePoints = 0;
+
+        /// <summary>QTEポイントを amount 減らす(じゅふを使ったときなど)。0 より下にはならない</summary>
+        public void LoseQtePoints(int amount = 1) => QtePoints = Py.Clamp(QtePoints - amount, 0, GameData.QTE_MAX);
     }
 
     public sealed class Enemy : Character

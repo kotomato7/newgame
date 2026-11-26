@@ -7,8 +7,11 @@
 //                           「名前」は画面に出す名前なので、変えても画像のフォルダは変わらない
 //                           防御力・ダメージカット率K は敵だけ、QTE初期値 はプレイヤーだけが使う
 //                           新しい敵の種族は、区分を「敵」にした行を1行足す
-//   data/battle_rules.csv … バトルのルールの数値(QTE成功時のダメージ倍率、ひっさつのダメージ など)
-//   data/talismans.csv    … じゅふ(呪符)。1行が呪符1枚(3枚まで)。上がるパラメータ(攻撃力)と上がる量
+//   data/battle_rules.csv … バトルのルールの数値(QTE成功時のダメージ倍率、ひっさつのダメージ、攻撃QTEの受付時間、防御QTEのテンポ など)
+//   data/items.csv        … アイテムの一覧。1行がアイテム1種類(ID・アイテム名・表示名・回復量・減るQTEポイント)
+//                           ID はほかの表から参照する名前(英数字。例: item_talisman_heal)。表示名 が画面に出る
+//   data/talismans.csv    … じゅふ(呪符)。1行が呪符1枚(3枚まで)。上の行から順に、じゅふの欄の上から並ぶ
+//                           「ID」に items.csv のアイテムの ID を書く(同じ ID を何枚に書いてもよい)
 //   data/animation.csv    … キャラの画像アニメーションの速さ(動きごとの1コマの時間)
 //   data/bgm.csv          … BGM の音量(画面ごと)。曲そのものは assets/bgm/<Title・Menu・Battle>/ に入れる
 // ゲーム起動中でも、タイトルで「はじめる」を押すたびに読みなおす
@@ -35,12 +38,14 @@ namespace QteRpg
         public string Folder;   // 画像フォルダの名前(assets/images/Enemy/<Folder>)
     }
 
-    /// <summary>呪符1枚</summary>
-    public sealed class Talisman
+    /// <summary>アイテム1種類(data/items.csv の1行)</summary>
+    public sealed class Item
     {
-        public string Stat;      // "attack"
-        public string StatName;  // "攻撃力"
-        public int Amount;
+        public string Id;           // ID。ほかの表から参照する名前("item_talisman_heal")
+        public string Name;         // アイテム名("回復のじゅふ")
+        public string DisplayName;  // 表示名。画面に出す名前("回復のじゅふ")
+        public int Heal;            // 使うと回復するHP
+        public int QteCost;         // 使うと減るQTEポイント(右下の星の光が、この数だけ消える)
     }
 
     public static class GameData
@@ -51,6 +56,7 @@ namespace QteRpg
         static string DataDir => Path.Combine(Settings.BASE_DIR, "data");
         static string CharactersCsv => Path.Combine(DataDir, "characters.csv");
         static string RulesCsv => Path.Combine(DataDir, "battle_rules.csv");
+        static string ItemsCsv => Path.Combine(DataDir, "items.csv");
         static string TalismansCsv => Path.Combine(DataDir, "talismans.csv");
         static string AnimationCsv => Path.Combine(DataDir, "animation.csv");
         static string BgmCsv => Path.Combine(DataDir, "bgm.csv");
@@ -72,7 +78,7 @@ namespace QteRpg
             { "待機", "Normal" }, { "攻撃", "Attack" }, { "ダメージ", "Damage" }, { "ひっさつ", "Special" }, { "じゅふ", "Item" },
         };
         public const int TALISMAN_MAX = 3;  // 呪符は3枚まで
-        public static readonly Dictionary<string, string> TALISMAN_STATS = new Dictionary<string, string> { { "攻撃力", "attack" } };  // 呪符で上げられるパラメータ
+        static readonly string[] ITEM_COLUMNS = { "ID", "アイテム名", "表示名", "回復量", "減るQTEポイント" };  // items.csv の列
 
         // battle_rules.csv の「項目」→ プログラムの中での名前
         static readonly Dictionary<string, string> RULE_ITEMS = new Dictionary<string, string>
@@ -81,6 +87,8 @@ namespace QteRpg
             { "ひっさつのダメージ(敵全体)", "SPECIAL_DAMAGE" },
             { "ひっさつで星をえがく制限時間(秒)", "SPECIAL_TIME" },
             { "防御力の効き(K)", "DEFENSE_K" },
+            { "攻撃QTEの受付時間(秒)", "ATTACK_QTE_TIME" },
+            { "防御QTEのテンポ(BPM)", "DEFENSE_BPM" },
         };
 
         // CSV の列名 → プログラムの中での名前
@@ -99,7 +107,10 @@ namespace QteRpg
         public static int SPECIAL_DAMAGE = 0;        // ひっさつで敵全体にあたえるダメージ
         public static double SPECIAL_TIME = 5.0;     // ひっさつで星をえがく制限時間(秒)
         public static double DEFENSE_K = 20.0;       // 防御力の効き。敵が受けるダメージ = 攻撃力 × K ÷ (K + 敵の防御力)
-        public static List<Talisman> TALISMANS = new List<Talisman>();  // 呪符
+        public static double ATTACK_QTE_TIME = 1.5;  // 攻撃QTE(A→S→D→F)の受付時間(秒)
+        public static double DEFENSE_BPM = 120.0;    // 防御QTEのテンポ(1分間の拍の数)。大きいほどキーが速く流れてくる
+        public static Dictionary<string, Item> ITEMS = new Dictionary<string, Item>();  // アイテム {"item_talisman_heal": ..., ...}
+        public static List<Item> TALISMANS = new List<Item>();  // 呪符(上から順に 呪符1, 2, 3。中身は ITEMS のアイテム)
         public static Dictionary<string, double> FRAME_TIMES = new Dictionary<string, double>();  // アニメーションの1コマの時間 {"待機": 0.2, ...}
         public static Dictionary<string, double> BGM_VOLUMES = new Dictionary<string, double>();  // BGM の音量(0〜1) {"タイトル": 0.6, ...}
 
@@ -316,7 +327,7 @@ namespace QteRpg
                 {
                     throw new DataError($"{fileName} の {lineNo}行目「{item}」の値は 0 以上にしてください: {Fmt(value)}");
                 }
-                if ((RULE_ITEMS[item] == "SPECIAL_TIME" || RULE_ITEMS[item] == "DEFENSE_K") && value <= 0)
+                if (new[] { "SPECIAL_TIME", "DEFENSE_K", "ATTACK_QTE_TIME", "DEFENSE_BPM" }.Contains(RULE_ITEMS[item]) && value <= 0)
                 {
                     throw new DataError($"{fileName} の {lineNo}行目「{item}」は 0 より大きくしてください: {Fmt(value)}");
                 }
@@ -330,32 +341,79 @@ namespace QteRpg
             return rules;
         }
 
-        /// <summary>talismans.csv から呪符を読む(上から順に呪符1, 2, 3)</summary>
-        static List<Talisman> LoadTalismans()
+        /// <summary>items.csv からアイテムを読む。戻り値: {ID: アイテム}</summary>
+        static Dictionary<string, Item> LoadItems()
         {
-            string path = TalismansCsv;
+            string path = ItemsCsv;
             string fileName = Path.GetFileName(path);
-            var talismans = new List<Talisman>();
+            var items = new Dictionary<string, Item>();
             int lineNo = 1;
-            foreach (var row in ReadRows(path, new[] { "上がるパラメータ", "上がる量" }))
+            foreach (var row in ReadRows(path, ITEM_COLUMNS))
             {
                 lineNo++;
-                string statName = Get(row, "上がるパラメータ"), amountText = Get(row, "上がる量");
-                if (statName == "" && amountText == "")
+                if (ITEM_COLUMNS.All(column => Get(row, column) == ""))
                 {
                     continue;  // 空の行は飛ばす
                 }
-                if (!TALISMAN_STATS.ContainsKey(statName))
+                string id = Get(row, "ID");
+                if (id == "")
                 {
-                    throw new DataError($"{fileName} の {lineNo}行目「上がるパラメータ」は " +
-                                        $"{string.Join("・", TALISMAN_STATS.Keys)} のどれかにしてください(今は「{statName}」)");
+                    throw new DataError($"{fileName} の {lineNo}行目「ID」が空です");
                 }
-                int amount = ToInt(amountText, $"{fileName} の {lineNo}行目「上がる量」");
-                if (amount < 0)
+                if (items.ContainsKey(id))
                 {
-                    throw new DataError($"{fileName} の {lineNo}行目「上がる量」は 0 以上にしてください: {amount}");
+                    throw new DataError($"{fileName} の {lineNo}行目: ID「{id}」がほかの行と同じです。ID はアイテムごとに変えてください");
                 }
-                talismans.Add(new Talisman { Stat = TALISMAN_STATS[statName], StatName = statName, Amount = amount });
+                string name = Get(row, "アイテム名");
+                string displayName = Get(row, "表示名");
+                if (displayName == "")
+                {
+                    displayName = name;  // 表示名が空なら アイテム名 を出す
+                }
+                if (displayName == "")
+                {
+                    throw new DataError($"{fileName} の {lineNo}行目: 「アイテム名」か「表示名」を書いてください");
+                }
+                // 数字の列は、空なら 0(その効果なし)
+                var numbers = new Dictionary<string, int>();
+                foreach (string column in new[] { "回復量", "減るQTEポイント" })
+                {
+                    string text = Get(row, column);
+                    numbers[column] = text == "" ? 0 : ToInt(text, $"{fileName} の {lineNo}行目「{column}」");
+                    if (numbers[column] < 0)
+                    {
+                        throw new DataError($"{fileName} の {lineNo}行目「{column}」は 0 以上にしてください: {numbers[column]}");
+                    }
+                }
+                items[id] = new Item
+                {
+                    Id = id, Name = name == "" ? displayName : name, DisplayName = displayName,
+                    Heal = numbers["回復量"], QteCost = numbers["減るQTEポイント"],
+                };
+            }
+            return items;
+        }
+
+        /// <summary>talismans.csv から呪符を読む(上から順に呪符1, 2, 3)。ID で items.csv のアイテムを参照する</summary>
+        static List<Item> LoadTalismans(Dictionary<string, Item> items)
+        {
+            string path = TalismansCsv;
+            string fileName = Path.GetFileName(path);
+            var talismans = new List<Item>();
+            int lineNo = 1;
+            foreach (var row in ReadRows(path, new[] { "ID" }))
+            {
+                lineNo++;
+                string id = Get(row, "ID");
+                if (id == "")
+                {
+                    continue;  // ID が空の行は飛ばす
+                }
+                if (!items.TryGetValue(id, out var item))
+                {
+                    throw new DataError($"{fileName} の {lineNo}行目: ID「{id}」のアイテムが items.csv にありません");
+                }
+                talismans.Add(item);
             }
             if (talismans.Count == 0)
             {
@@ -450,10 +508,12 @@ namespace QteRpg
         {
             var (player, enemies) = LoadCharacters();
             var rules = LoadRules();
-            var talismans = LoadTalismans();
+            var items = LoadItems();
+            var talismans = LoadTalismans(items);
             var frameTimes = LoadAnimation();
             var bgmVolumes = LoadBgm();
             BGM_VOLUMES = bgmVolumes;
+            ITEMS = items;
             TALISMANS = talismans;
             FRAME_TIMES = frameTimes;
             (PLAYER_NAME, PLAYER_STATS, PLAYER_QTE_START) = player;
@@ -462,6 +522,8 @@ namespace QteRpg
             SPECIAL_DAMAGE = (int)Math.Ceiling(Math.Round(rules["SPECIAL_DAMAGE"], 6));  // ダメージは整数(小数は切り上げ)
             SPECIAL_TIME = rules["SPECIAL_TIME"];
             DEFENSE_K = rules["DEFENSE_K"];
+            ATTACK_QTE_TIME = rules["ATTACK_QTE_TIME"];
+            DEFENSE_BPM = rules["DEFENSE_BPM"];
         }
     }
 

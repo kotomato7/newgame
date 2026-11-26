@@ -5,7 +5,7 @@
 //
 // ルール
 //   ・A → S → D → F の順に押す
-//   ・QTE_TIME 秒以内に全部押せたら成功
+//   ・受付時間(data/battle_rules.csv の「攻撃QTEの受付時間(秒)」)以内に全部押せたら成功
 //   ・ちがうキー(ゲームで使うキーのうち、次に押すキー以外)を押す → その場で失敗
 //   ・時間切れ → 失敗
 using System;
@@ -16,7 +16,6 @@ namespace QteRpg.UI
 {
     public sealed class AttackQTE
     {
-        public const double QTE_TIME = 2.0;  // 受付時間(秒)
         public static readonly string[] ATTACK_SEQUENCE = { "A", "S", "D", "F" };  // 押す順番
 
         // 判定に使うキー(これ以外のキーは押しても何も起きない)
@@ -34,12 +33,13 @@ namespace QteRpg.UI
         public bool? Result;         // null = 受付中、true = 成功、false = 失敗
         public double Timer;
 
-        public AttackQTE(IEnumerable<string> sequence = null, double timeLimit = QTE_TIME)
+        /// <summary>timeLimit … 受付時間(秒)。省略すると data/battle_rules.csv の「攻撃QTEの受付時間(秒)」</summary>
+        public AttackQTE(IEnumerable<string> sequence = null, double? timeLimit = null)
         {
             Sequence = (sequence ?? ATTACK_SEQUENCE).ToList();
             Index = 0;
-            TimeLimit = timeLimit;
-            TimeLeft = timeLimit;
+            TimeLimit = timeLimit ?? GameData.ATTACK_QTE_TIME;
+            TimeLeft = TimeLimit;
             Result = null;
             Timer = 0.0;
         }
