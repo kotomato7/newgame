@@ -95,5 +95,21 @@ namespace QteRpg
         {
             return DrawText(surface, text, size, color, anchor, pos.x, pos.y);
         }
+
+        /// <summary>秒を 1/100秒 の数にする。1/100秒 より細かいところは切り捨て</summary>
+        public static long ToCentis(double seconds)
+        {
+            return (long)Math.Floor(Math.Max(0.0, seconds) * 100 + 1e-6);  // 1e-6 は、足し算の誤差で 0.99999… が 0.99 にならないように
+        }
+
+        /// <summary>タイム(秒)を「00:00:00」(分:秒:1/100秒)の文字にする</summary>
+        public static string FormatTime(double seconds) => FormatCentis(ToCentis(seconds));
+
+        /// <summary>タイム(1/100秒の数)を「00:00:00」(分:秒:1/100秒)の文字にする</summary>
+        public static string FormatCentis(long centis)
+        {
+            long minutes = centis / 6000, secs = centis / 100 % 60, hundredths = centis % 100;
+            return $"{minutes:00}:{secs:00}:{hundredths:00}";
+        }
     }
 }

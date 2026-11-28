@@ -6,7 +6,15 @@
 //   "target"  … こうげきする敵を選ぶ(←→ かマウス)
 //   "jufu"    … 使う呪符を選ぶ
 //   "action"  … 戦闘中・呪符を使っている途中(この間は QTE の入力だけ受けつける)
-//   "result"  … 勝ち / 負け の表示
+//   "result"  … 勝ち / 負け の表示(ステージのとちゅうで勝ったら「次のステージへ」ボタン)
+//   "stage"   … ステージが始まるときの演出(暗くなる → 「ステージ 2」 → 明るくなる)。この間は何も受けつけない
+//
+// ステージ:
+//   3面(STAGE_COUNT)まで。どの面も 1面 と同じしくみ(出てくる敵は STAGE_ENEMIES)
+//   タイトルで「はじめる」を押すと、「ステージ 1」の演出が入って 1面の戦闘になる
+//   面のとちゅうで勝つと、結果の画面に「次のステージへ」が出る。押すと同じ演出が入って次の面の戦闘になる
+//   最後の面で勝ったとき・負けたときは、結果の画面からタイトルへもどる
+//   プレイヤーのHP・QTEポイントは次の面に引きつぐ。呪符は面ごとに3枚とも使える状態にもどる
 //
 // ターン(1回の戦闘):
 //   プレイヤーが こうげき か ひっさつ を決めたら始まる
@@ -41,7 +49,9 @@
 //   そのあと防御QTE(生き残った敵だけがこうげきしてくる)
 //
 // タイム:
-//   バトル画面に入ったときから数えはじめ、右上に「00:00:00」(分:秒:1/100秒)で出す。決着したら止まり、結果の画面にも出す
+//   1面の戦闘が始まったとき(「ステージ 1」の演出が終わったとき)から数えはじめ、右上に「00:00:00」(分:秒:1/100秒)で出す
+//   決着したら止まり、結果の画面にも出す。次の面の戦闘が始まったら続きから数える(ステージ全部の合計)
+//   3面までクリアしたときのタイムは、自己ベストの3位までに入れば保存する(BestTimes.cs。メニューの「タイム」で見られる)
 //
 // キャラのしくみは Characters.cs、パラメータの数値は data/characters.csv にある
 //
@@ -64,9 +74,15 @@ namespace QteRpg.Scenes
         static readonly PgRect FIGHT_RECT = new PgRect(COMMAND_RECT.Right + 4, COMMAND_RECT.Top, 86, 62);   // その右
         const int MENU_GAP = 18;  // コマンドの行の間隔
 
-        // 今回のバトルに出てくる敵(種族名)。data/characters.csv の「敵」の行にある名前を書く
-        // 並び順 = 画面での位置(左・真ん中・右)
-        static readonly string[] BATTLE_ENEMIES = { "怨霊", "鬼", "骸骨" };
+        // ステージ(面)ごとに出てくる敵(種族名)。data/characters.csv の「敵」の行にある名前を書く
+        // 並び順 = 画面での位置(左・真ん中・右)。今は 3面とも 1面 と同じ
+        static readonly string[][] STAGE_ENEMIES =
+        {
+            new[] { "怨霊", "鬼", "骸骨" },  // 1面
+            new[] { "怨霊", "鬼", "骸骨" },  // 2面
+            new[] { "怨霊", "鬼", "骸骨" },  // 3面
+        };
+        static readonly int STAGE_COUNT = STAGE_ENEMIES.Length;  // ステージの数
 
         // 敵を置く場所: (画像がないときの白い四角の大きさ, 足元の位置)。左から順に
         // 真ん中は大きく表示する鬼なので、少し手前(下)に置いて頭が上のHPバーに重ならないようにする
@@ -86,6 +102,7 @@ namespace QteRpg.Scenes
         const int JUFU_INDEX = 1;     // たたかう の中での「じゅふ」の番号(0=こうげき, 1=じゅふ, 2=やめる)
         const double NOTICE_TIME = 0.9;  // 「HP +20」などの表示時間
         const int TIME_MARGIN = 6;       // 右上のタイムの、画面の右はし・上はしからのすき間
+        const string NEXT_STAGE_LABEL = "次のステージへ";  // 結果の画面のボタン
 
         const int EMBLEM_RADIUS = 34;  // 右下の紋章(HPの丸・QTEポイント)の大きさ
         static readonly (int x, int y) EMBLEM_CENTER = (W - EMBLEM_RADIUS - 10, H - EMBLEM_RADIUS - 10);
@@ -98,6 +115,10 @@ namespace QteRpg.Scenes
         const double DEFENSE_END_WAIT = 0.6;      // 防御QTEが終わってから「ガード 12/15」などを見せる時間
         const double ENEMY_ATTACK_STAGGER = 0.1;  // 防御QTEのあと、敵が 左→真ん中→右 の順に踏み込むときのずらし(秒)
         const double QTE_RESULT_TIME = 0.7;       // SUCCESS! / Failed を表示する時間
+        // 次のステージへ進む演出(秒)
+        const double STAGE_FADE_OUT = 0.6;        // 結果の画面がまっ暗になるまで
+        const double STAGE_TITLE_TIME = 1.6;      // まっ暗な中に「ステージ 2」を出しておく時間
+        const double STAGE_FADE_IN = 0.6;         // 次の面の戦闘画面が明るくなるまで
         static readonly (int x, int y) QTE_CENTER = (W / 2, 150);   // QTE を出す位置(画面の真ん中あたり)
         static readonly (int x, int y) STAR_CENTER = (W / 2, 140);  // ひっさつで星をえがく場所
         const int STAR_RADIUS = 62;
@@ -142,7 +163,13 @@ namespace QteRpg.Scenes
         HashSet<int> _usedTalismans = new HashSet<int>();  // このバトルで使った呪符の番号
         string _notice = "";          // 真ん中に少し出す文字(「HP +20」など)
         double _noticeTimer;
-        double _battleTime;           // バトル画面に入ってからの時間(秒。小数で 1/100秒 より細かく持つ)。決着したら止まる
+        double _battleTime;           // 1面から数えた戦闘の時間(秒。小数で 1/100秒 より細かく持つ)。結果の画面・演出のあいだは止まる
+        int _stage = 1;               // 今のステージ(1〜STAGE_COUNT)
+        double _stageTimer;           // ステージが始まるときの演出が始まってからの時間
+        int _pendingStage;            // 演出のあとに始まるステージ
+        Surface _fadeFrom;            // 演出の 1. で暗くしていく画面(演出が始まる直前の画面をとっておく)
+        readonly SelectList _nextMenu;  // 結果の画面の「次のステージへ」ボタン
+        readonly PgRect _nextRect;
         bool _subResult;              // QTE・星えがきの結果(Python 版の「yield from の戻り値」のかわり)
         readonly Surface _shade = new Surface(W, H);  // 画面を暗くする黒い板
 
@@ -153,9 +180,37 @@ namespace QteRpg.Scenes
             _fightMenu = new SelectList(new[] { "こうげき", "じゅふ", "やめる" },
                                         top: FIGHT_RECT.Top + 1, left: FIGHT_RECT.Left + 16, gap: MENU_GAP);
             _shade.Fill(Settings.BLACK);
+
+            // 「次のステージへ」ボタン(結果の画面の下のほう、真ん中)
+            int labelW = Utils.RenderText(NEXT_STAGE_LABEL, Settings.FONT_SMALL).Width;
+            int labelLeft = W / 2 - labelW / 2;
+            _nextRect = new PgRect(labelLeft - 16, H / 2 + 34, labelW + 32, MENU_GAP + 4);
+            _nextMenu = new SelectList(new[] { NEXT_STAGE_LABEL }, top: _nextRect.Top - 1, left: labelLeft, gap: MENU_GAP);  // 文字がわくの上下まん中にくるように
         }
 
+        /// <summary>タイトルから来たとき: 「ステージ 1」の演出から 1面を始める。タイムも 0 から</summary>
         public override void OnEnter()
+        {
+            _stage = 1;
+            _battleTime = 0.0;
+            SetupStage();
+            StartStageTransition(1);  // 1面の用意はもうできているので、演出だけ見せる
+        }
+
+        /// <summary>
+        /// ステージが始まるときの演出を始める(UpdateStageTransition)。nextStage はそのあと始まる面
+        /// 演出の 1. では、今の画面(タイトル・結果の画面)をそのまま暗くしていく
+        /// </summary>
+        void StartStageTransition(int nextStage)
+        {
+            _pendingStage = nextStage;
+            _fadeFrom = Game.Canvas.Copy();  // 直前に表示していた画面
+            _stageTimer = 0.0;
+            _state = "stage";
+        }
+
+        /// <summary>今のステージ(_stage)の戦闘を用意する(敵・呪符などを新しくする)。タイムはそのまま</summary>
+        void SetupStage()
         {
             // プレイヤーは Game が持っているものを使う(バトルをまたいで引きつぐ)
             _player = Game.Player;
@@ -165,12 +220,13 @@ namespace QteRpg.Scenes
             _playerActor = new Actor(_player, PLAYER_SLOT.size, PLAYER_SLOT.foot, labelSide: null, lungeDir: (0, -1),
                                      animations: Sprites.PlayerAnimations());
             // 敵は毎回新しく作る(種族のパラメータで満タンの状態)
-            var missing = BATTLE_ENEMIES.Where(species => !GameData.ENEMY_SPECIES.ContainsKey(species)).ToList();
+            var stageEnemies = STAGE_ENEMIES[Py.Clamp(_stage, 1, STAGE_COUNT) - 1];
+            var missing = stageEnemies.Where(species => !GameData.ENEMY_SPECIES.ContainsKey(species)).ToList();
             if (missing.Count > 0)
             {
                 Log.Print($"[パラメータ表にない敵は出しません] {string.Join("、", missing)}");
             }
-            _enemies = BATTLE_ENEMIES.Where(species => GameData.ENEMY_SPECIES.ContainsKey(species))
+            _enemies = stageEnemies.Where(species => GameData.ENEMY_SPECIES.ContainsKey(species))
                                      .Select(species => new Enemy(species)).ToList();
             _enemyActors = new List<Actor>();
             _hpBars = new List<HpBar>();
@@ -201,7 +257,7 @@ namespace QteRpg.Scenes
             _star = null;
             _qteFlashTimer = 0.0;
             _noticeTimer = 0.0;
-            _battleTime = 0.0;  // タイムはバトル画面に入ったときから数える
+            _nextMenu.Reset();
             // 呪符: バトルのたびに全部使える状態にもどし、上がったパラメータももとにもどす
             _player.ClearBuffs();
             _usedTalismans = new HashSet<int>();
@@ -302,11 +358,13 @@ namespace QteRpg.Scenes
                     HandleJufu(e);
                     break;
                 case "result":
-                    if (_resultTimer >= RESULT_DELAY && SelectList.IsConfirm(e))
+                    if (_resultTimer >= RESULT_DELAY)
                     {
-                        Game.ChangeScene("title");
+                        HandleResult(e);
                     }
                     break;
+                case "stage":
+                    break;  // 次のステージへ進む演出のあいだは何も受けつけない
                 case "action":
                     // 戦闘中は QTE の入力だけ受けつける
                     if (_qte != null)
@@ -402,6 +460,25 @@ namespace QteRpg.Scenes
             else  // グレー(使用ずみ)の呪符は SelectList が反応しないようにしている
             {
                 UseTalisman(choice.Value);
+            }
+        }
+
+        /// <summary>まだ次のステージがあるか(とちゅうの面で勝ったとき)</summary>
+        bool HasNextStage => _result == "win" && _stage < STAGE_COUNT;
+
+        /// <summary>結果の画面: 次のステージがあれば「次のステージへ」ボタン、なければ Enter / クリックでタイトルへ</summary>
+        void HandleResult(GameEvent e)
+        {
+            if (HasNextStage)
+            {
+                if (_nextMenu.HandleEvent(e) == 0)
+                {
+                    StartStageTransition(_stage + 1);  // 次のステージへ進む演出を始める
+                }
+            }
+            else if (SelectList.IsConfirm(e))
+            {
+                Game.ChangeScene("title");
             }
         }
 
@@ -752,6 +829,10 @@ namespace QteRpg.Scenes
             _result = result;
             _resultTimer = 0.0;
             _state = "result";
+            if (result == "win" && _stage >= STAGE_COUNT)
+            {
+                BestTimes.Add(_battleTime);  // 3面までクリア → 自己ベストの3位までに入れば保存
+            }
         }
 
         // ---- 更新・描画 ----
@@ -785,11 +866,15 @@ namespace QteRpg.Scenes
             }
             if (_state == "result")
             {
-                _resultTimer += dt;
+                _resultTimer += dt;  // 結果の画面ではタイムは止まる
+            }
+            else if (_state == "stage")
+            {
+                UpdateStageTransition(dt);  // 演出のあいだもタイムは止まる
             }
             else
             {
-                _battleTime += dt;  // 決着する(result になる)までタイムを進める。dt は前のフレームからの秒数(小数)なので 1/100秒 まで数えられる
+                _battleTime += dt;  // 戦闘中だけタイムを進める。dt は前のフレームからの秒数(小数)なので 1/100秒 まで数えられる
             }
 
             for (int i = 0; i < _enemyActors.Count; i++)
@@ -807,6 +892,30 @@ namespace QteRpg.Scenes
             _commandMenu.Update(dt);
             _fightMenu.Update(dt);
             _talismanMenu?.Update(dt);
+            _nextMenu.Update(dt);
+        }
+
+        /// <summary>
+        /// ステージが始まるときの演出を進める
+        ///   1. 直前の画面(タイトル・結果の画面)がだんだん暗くなる(STAGE_FADE_OUT 秒)。まっ暗になったら次の面の戦闘を用意する
+        ///   2. まっ暗な中に「ステージ 2」など(STAGE_TITLE_TIME 秒)
+        ///   3. 戦闘画面がだんだん明るくなる(STAGE_FADE_IN 秒)。明るくなったら戦闘開始(タイムも数えはじめる・再開する)
+        /// </summary>
+        void UpdateStageTransition(double dt)
+        {
+            double before = _stageTimer;
+            _stageTimer += dt;
+            if (before < STAGE_FADE_OUT && _stageTimer >= STAGE_FADE_OUT && _stage != _pendingStage)
+            {
+                _stage = _pendingStage;
+                SetupStage();      // ここで _state が "command" になるので、演出が終わるまで "stage" にもどしておく
+                _state = "stage";
+            }
+            if (_stageTimer >= STAGE_FADE_OUT + STAGE_TITLE_TIME + STAGE_FADE_IN)
+            {
+                _state = "command";  // 戦闘が始まる
+                _fadeFrom = null;
+            }
         }
 
         public override void Draw(Surface surface)
@@ -880,21 +989,57 @@ namespace QteRpg.Scenes
             {
                 DrawResult(surface);
             }
+            if (_state == "stage")
+            {
+                DrawStageTransition(surface);
+            }
         }
 
-        /// <summary>秒を「00:00:00」(分:秒:1/100秒)の文字にする。1/100秒 より細かいところは切り捨て</summary>
-        static string FormatTime(double seconds)
+        /// <summary>ステージが始まるときの演出を描く(UpdateStageTransition の 1〜3)</summary>
+        void DrawStageTransition(Surface surface)
         {
-            // 1/100秒 の数にする(1e-6 は、足し算の誤差で 0.99999… が 0.99 にならないように)
-            long centis = (long)Math.Floor(Math.Max(0.0, seconds) * 100 + 1e-6);
-            long minutes = centis / 6000, secs = centis / 100 % 60, hundredths = centis % 100;
-            return $"{minutes:00}:{secs:00}:{hundredths:00}";
+            double t = _stageTimer;
+            if (t < STAGE_FADE_OUT)  // 1. 直前の画面が暗くなっていく
+            {
+                if (_fadeFrom != null)
+                {
+                    surface.Blit(_fadeFrom, 0, 0);
+                }
+                _shade.SetAlpha((int)(255 * t / STAGE_FADE_OUT));
+                surface.Blit(_shade, 0, 0);
+                return;
+            }
+            t -= STAGE_FADE_OUT;
+            if (t >= STAGE_TITLE_TIME)  // 3. 明るくなっていく
+            {
+                t -= STAGE_TITLE_TIME;
+                _shade.SetAlpha((int)(255 * Math.Max(0.0, 1 - t / STAGE_FADE_IN)));
+                surface.Blit(_shade, 0, 0);
+                return;
+            }
+            // 2. まっ暗な中に「ステージ 2」。上下の金色の線が真ん中からのび、文字がうかび上がって、最後に消える
+            surface.Fill(Settings.BLACK);
+            const double appear = 0.4, vanish = 0.3;
+            double show = Math.Min(1.0, t / appear) * Math.Min(1.0, (STAGE_TITLE_TIME - t) / vanish);  // 0〜1
+            double grow = 1 - Math.Pow(1 - Math.Min(1.0, t / appear), 2);  // 線ののび(はじめ速く、だんだんゆっくり)
+            int half = (int)(110 * grow);
+            var lineColor = new Rgba((int)(Settings.GLOW.R * show), (int)(Settings.GLOW.G * show), (int)(Settings.GLOW.B * show));
+            foreach (int y in new[] { H / 2 - 26, H / 2 + 26 })
+            {
+                if (half > 0)
+                {
+                    QteRpg.Draw.Line(surface, lineColor, (W / 2 - half, y), (W / 2 + half, y), 1);
+                }
+            }
+            var title = Utils.RenderText($"ステージ {_stage}", Settings.FONT_LARGE, Settings.WHITE);
+            title.SetAlpha((int)(255 * show));
+            surface.Blit(title, title.GetRect(Anchor.Center, W / 2, H / 2));
         }
 
         /// <summary>右上にタイムを出す(敵の名前の札と同じ、白わくの黒い札)</summary>
         void DrawTime(Surface surface)
         {
-            var text = Utils.RenderText(FormatTime(_battleTime), Settings.FONT_SMALL, Settings.WHITE);
+            var text = Utils.RenderText(Utils.FormatTime(_battleTime), Settings.FONT_SMALL, Settings.WHITE);
             int boxW = text.Width + 8, boxH = text.Height + 2;
             var box = new PgRect(W - TIME_MARGIN - boxW, TIME_MARGIN, boxW, boxH);  // 右上にそろえる
             Window.DrawWindow(surface, box);
@@ -917,8 +1062,16 @@ namespace QteRpg.Scenes
             string text = _result == "win" ? "しょうり！" : "まけてしまった…";
             var color = _result == "win" ? Settings.GLOW : Settings.WHITE;
             Utils.DrawText(surface, text, Settings.FONT_LARGE, color, Anchor.Center, W / 2, H / 2 - 16);
-            Utils.DrawText(surface, $"タイム  {FormatTime(_battleTime)}", Settings.FONT_SMALL, Settings.WHITE, Anchor.Center, W / 2, H / 2 + 18);
-            Utils.DrawText(surface, "Enter / クリックでタイトルへ", Settings.FONT_SMALL, Settings.LIGHT_GRAY, Anchor.Center, W / 2, H / 2 + 44);
+            Utils.DrawText(surface, $"タイム  {Utils.FormatTime(_battleTime)}", Settings.FONT_SMALL, Settings.WHITE, Anchor.Center, W / 2, H / 2 + 18);
+            if (HasNextStage)
+            {
+                Window.DrawWindow(surface, _nextRect);  // 「次のステージへ」ボタン
+                _nextMenu.Draw(surface);
+            }
+            else
+            {
+                Utils.DrawText(surface, "Enter / クリックでタイトルへ", Settings.FONT_SMALL, Settings.LIGHT_GRAY, Anchor.Center, W / 2, H / 2 + 44);
+            }
         }
     }
 }

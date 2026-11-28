@@ -51,6 +51,7 @@ namespace QteRpg.UnityPort
             Log.Output = message => Debug.Log(message);
             Log.WarningOutput = message => Debug.LogWarning(message);
             Settings.BASE_DIR = Application.streamingAssetsPath;
+            Settings.SAVE_DIR = Application.persistentDataPath;  // 自己ベストのタイムなどを保存する場所
             Platform.Current = this;
             DisableIme();
             EnsureCamera();

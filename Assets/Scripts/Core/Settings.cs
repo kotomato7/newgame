@@ -37,6 +37,8 @@ namespace QteRpg
         // Pygame 版のフォルダ(assets/ と data/)は、Unity では Assets/StreamingAssets の中にある。
         // ゲームを動かしているあいだも、このフォルダのファイルを直接読む(書きかえるとすぐ反映される)
         public static string BASE_DIR = ".";  // Unity では Application.streamingAssetsPath (GameRoot が設定する)
+        // 自己ベストのタイムなど、ゲームが書きこむファイルを置く場所(ゲームのフォルダとは別。入れなおしても消えない)
+        public static string SAVE_DIR = ".";  // Unity では Application.persistentDataPath (GameRoot が設定する)
 
         public static string FONT_PATH => Path.Combine(BASE_DIR, "assets", "fonts", "DotGothic16-bitmap.bytes");
     }
